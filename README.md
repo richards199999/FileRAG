@@ -98,3 +98,6 @@ Contributions to FileRAG are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Acknowledgement
+
+Great thanks to Claude-3.5 Sonnet from Anthropic for bringing the idea come to life together!
