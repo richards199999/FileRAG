@@ -22,6 +22,11 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 - **Context-Aware Retrieval**: Retrieves relevant documents based on user queries using advanced language models.
 - **Flexible API Integration**: Easily switch between different AI providers (Anthropic and OpenAI).
 
+## Structure
+
+![image](https://github.com/user-attachments/assets/8cf79a53-3b22-43a6-804f-7a44467e374c)
+
+
 ## Components
 
 1. **Document Indexer** (`indexer.py`): Indexes and summarizes documents in a specified folder.
