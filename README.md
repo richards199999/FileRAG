@@ -2,13 +2,13 @@
 
 ## Motivation
 
-Traditional Retrieval-Augmented Generation (RAG) systems often struggle with maintaining context and coherence when dealing with large documents or complex information structures. FileRAG was born out of the need for a more efficient and context-aware document retrieval system.
+Traditional Retrieval-Augmented Generation (RAG) systems often struggle with maintaining context and coherence when dealing with large documents or complex information structures. FileRAG was born out of the need for a more efficient and context-aware knowledge/document/information retrieval system.
 
 The primary motivations for developing FileRAG are:
 
 1. **Preserving Document Context**: Unlike traditional RAG systems that often retrieve fragmented text snippets, FileRAG maintains the integrity of entire documents, ensuring that the context and coherence of information are preserved.
 
-2. **Improved Precision**: By summarizing and indexing entire documents, FileRAG achieves higher precision in retrieving relevant information, especially crucial in fields such as academia, legal research, and technical documentation.
+2. **Improved Precision**: By summarizing and indexing entire documents, FileRAG achieves higher precision in retrieving relevant information, especially crucial in fields such as academia, legal research, technical documentation, and more.
 
 3. **Scalability**: The file-based approach allows for easier management and updating of the knowledge base, making it more scalable for growing document collections.
 
