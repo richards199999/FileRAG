@@ -48,12 +48,29 @@ def parse_file_ids(response_content):
     print("Parsing file IDs from API response")
     print(f"Raw response: {response_content}")
 
-    file_id_tuples = re.findall(r'"([^"]+\.(md|pdf|txt|docx))"', response_content)
+    cleaned_response = re.sub(r'```json\s*|\s*```', '', response_content).strip()
 
-    file_ids = [Path(file_id[0]).name for file_id in file_id_tuples]
+    try:
+        response_json = json.loads(cleaned_response)
 
-    print(f"Parsed and normalized file IDs: {file_ids}")
-    return file_ids
+        if 'file_id' in response_json:
+            file_ids = response_json['file_id'].split(',')
+
+            normalized_file_ids = [Path(file_id.strip()).name for file_id in file_ids]
+
+            print(f"Parsed and normalized file IDs: {normalized_file_ids}")
+            return normalized_file_ids
+        else:
+            print("No 'file_id' key found in the JSON response")
+            return []
+
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse JSON: {e}")
+        print("Falling back to regex method")
+        file_id_tuples = re.findall(r'"([^"]+\.(md|pdf|txt|docx))"', response_content)
+        file_ids = [Path(file_id[0]).name for file_id in file_id_tuples]
+        print(f"Parsed and normalized file IDs (regex method): {file_ids}")
+        return file_ids
 
 
 def extract_pdf_content(pdf_path, max_pages=1):
@@ -67,7 +84,7 @@ def extract_pdf_content(pdf_path, max_pages=1):
 
 def process_query_anthropic(query, folder_overview, client, log_file):
     system_message = """
-    The assistant's job is to pick the best file(s) that match(es) the given query using the file name and the file summary. If there is multiple file, use comma to seperate. It only need to return the file id in a JSON format. It should not miss any file that is related to the query. It *MUST* only return the JSON string without any other text, or it will be considered as an error.
+    The assistant's job is to pick the best file(s) that match(es) the given query using the file name and the file summary. If there is multiple file, use comma to seperate. It only need to return the file id in a JSON format. It should not miss any file that is related to the query. It *MUST* only return the JSON string without any other text, or it will be considered as an error. Do not put the JSON string inside the triple backticks, or it will be considered as an error.
     Here is the query:
     \"\"\"
     {query}
@@ -79,7 +96,7 @@ def process_query_anthropic(query, folder_overview, client, log_file):
     Example output format (It must follow this format, or it will be considered as an error):
     \"\"\"
     {
-        "file_id": "file_id1", "file_id2", ...
+        "file_id": "file_id1,file_id2,...“
     }
     \"\"\"
     """
@@ -115,7 +132,7 @@ def process_query_anthropic(query, folder_overview, client, log_file):
 
 def process_query_openai(query, folder_overview, client, log_file):
     system_message = """
-    The assistant's job is to pick the best file(s) that match(es) the given query using the file name and the file summary. If there is multiple file, use comma to seperate. It only need to return the file id in a JSON format. It should not miss any file that is related to the query. It *MUST* only return the JSON string without any other text, or it will be considered as an error.
+    The assistant's job is to pick the best file(s) that match(es) the given query using the file name and the file summary. If there is multiple file, use comma to seperate. It only need to return the file id in a JSON format. It should not miss any file that is related to the query. It *MUST* only return the JSON string without any other text, or it will be considered as an error. Do not put the JSON string inside the triple backticks, or it will be considered as an error.
     Here is the query:
     \"\"\"
     {query}
@@ -127,7 +144,7 @@ def process_query_openai(query, folder_overview, client, log_file):
     Example output format (It must follow this format, or it will be considered as an error):
     \"\"\"
     {
-        "file_id": "file_id1", "file_id2", ...
+        "file_id": "file_id1,file_id2,...“
     }
     \"\"\"
     """
@@ -155,7 +172,6 @@ def process_query_openai(query, folder_overview, client, log_file):
         print(f"API error occurred: {e}")
         log_api_response(str(e), query, log_file)
         return []
-
 
 def retrieve_document(file_id, folder_path, folder_overview):
     print(f"Retrieving document: {file_id}")
