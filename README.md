@@ -47,7 +47,7 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/FileRAG.git
+   git clone https://github.com/richards199999/FileRAG.git
    cd FileRAG
    ```
 
@@ -58,7 +58,7 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 
 ## Usage
 
-### Document Indexer
+### File Indexer
 
 1. Run the indexer:
    ```
@@ -73,14 +73,14 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 
 5. The script will generate a `folder_overview.json` file in the specified folder.
 
-### Document Retriever
+### File Retriever
 
 1. Run the retriever:
    ```
    python retriever.py
    ```
 
-2. Choose the AI model (Anthropic or OpenAI) when prompted.
+2. Choose the AI model (Anthropic, OpenAI or more) when prompted.
 
 3. Enter your API key for the chosen provider.
 
@@ -92,7 +92,7 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 
 ## Configuration
 
-- API keys can be set as environment variables (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) or entered when prompted.
+- API keys can be set as environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or more) or entered when prompted.
 - Adjust the `max_tokens` and `temperature` parameters in the API calls to fine-tune the model outputs.
 
 ## Limitations
@@ -111,4 +111,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgement
 
-Great thanks to Claude-3.5 Sonnet from Anthropic for bringing the idea come to life together!
+Great thanks to Claude-3.5 Sonnet from Anthropic for bringing the idea come to life together!🤗
