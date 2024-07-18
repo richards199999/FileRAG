@@ -13,14 +13,20 @@ import io
 def get_api_key(api_name):
     env_var = f"{api_name.upper()}_API_KEY"
 
-    api_key = input(f"Please enter your {api_name} API key: ").strip()
+    api_key = os.getenv(env_var)
 
-    if api_key:
-        os.environ[env_var] = api_key
-        print(f"{api_name} API key set successfully.")
+    if not api_key:
+        api_key = input(f"Please enter your {api_name} API key: ").strip()
+
+        if api_key:
+            os.environ[env_var] = api_key
+            print(f"{api_name} API key set successfully.")
+        else:
+            print(f"No {api_name} API key provided. Exiting.")
+            exit(1)
+
     else:
-        print(f"No {api_name} API key provided. Exiting.")
-        exit(1)
+        print(f"Using {api_name} API key from environment.")
 
     return api_key
 
