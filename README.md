@@ -27,8 +27,7 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 
 ## Structure
 
-![image](https://github.com/user-attachments/assets/8cf79a53-3b22-43a6-804f-7a44467e374c)
-
+![image](https://github.com/user-attachments/assets/ccc56f7a-e613-4a45-8426-59c1be6c0109)
 
 ## Components
 
