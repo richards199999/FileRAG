@@ -38,14 +38,10 @@ def summarize_document_anthropic(file_path, client):
         return None
 
     system_message = """
-    The assistant's job is to summarize the given article into 3-4 sentences. The first sentence should be the overview of the file, and the rest should be the main points of the article. The summary's language should be the same as the passage use.
+    The assistant's job is to summarize the given article into 3-4 sentences. The first sentence should be the overview of the file, and the rest should be the main points of the article. The summary's language must be the same as the passage use.
     Here is the format for the summary:
     \"\"\"
     This file is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
-    \"\"\"
-    or
-    \"\"\"
-    此文件是关于... 主要内容是：{{第一个关键词（组）}}，{{第二个关键词（组）}}，{{第三个关键词（组）}}，...
     \"\"\"
     """
 
@@ -77,14 +73,10 @@ def summarize_document_openai(file_path, client):
         return None
 
     system_message = """
-    The assistant's job is to summarize the given article into 3-4 sentences. The first sentence should be the overview of the file, and the rest should be the main points of the article. The summary's language should be the same as the passage use.
+    The assistant's job is to summarize the given article into 3-4 sentences. The first sentence should be the overview of the file, and the rest should be the main points of the article. The summary's language must be the same as the passage use.
     Here is the format for the summary:
     \"\"\"
     This file is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
-    \"\"\"
-    or
-    \"\"\"
-    此文件是关于... 主要内容是：{{第一个关键词（组）}}，{{第二个关键词（组）}}，{{第三个关键词（组）}}，...
     \"\"\"
     """
 
@@ -105,6 +97,7 @@ def summarize_document_openai(file_path, client):
         print(f"API error occurred: {e}")
         return None
 
+
 def get_image_media_type(file_path):
     try:
         with Image.open(file_path) as img:
@@ -121,6 +114,7 @@ def get_image_media_type(file_path):
                 raise ValueError(f"Unsupported image type: {format}")
     except Exception as e:
         raise ValueError(f"Error determining image type: {e}")
+
 
 def summarize_image_anthropic(file_path, client):
     print(f"Summarizing image with Anthropic: {file_path}")
@@ -142,10 +136,6 @@ def summarize_image_anthropic(file_path, client):
     Here is the format for the summary:
     \"\"\"
     This image is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
-    \"\"\"
-    or
-    \"\"\"
-    此图片是关于... 主要内容是：{{第一个关键词（组）}}，{{第二个关键词（组）}}，{{第三个关键词（组）}}，...
     \"\"\"
     """
 
@@ -201,10 +191,6 @@ def summarize_image_openai(file_path, client):
     \"\"\"
     This image is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
     \"\"\"
-    or
-    \"\"\"
-    此图片是关于... 主要内容是：{{第一个关键词（组）}}，{{第二个关键词（组）}}，{{第三个关键词（组）}}，...
-    \"\"\"
     """
 
     try:
@@ -232,6 +218,7 @@ def summarize_image_openai(file_path, client):
         print(f"API error occurred: {e}")
         return None
 
+
 def read_file_content(file_path):
     suffix = file_path.suffix.lower()
     try:
@@ -251,6 +238,7 @@ def read_file_content(file_path):
         print(f"Error reading file {file_path}: {e}")
         return None
 
+
 def read_pdf(file_path):
     try:
         with open(file_path, 'rb') as file:
@@ -263,6 +251,7 @@ def read_pdf(file_path):
         print(f"Error reading PDF file {file_path}: {e}")
         return None
 
+
 def read_docx(file_path):
     try:
         doc = Document(file_path)
@@ -272,7 +261,104 @@ def read_docx(file_path):
         return None
 
 
-def index_folder(folder_path, summarize_document, summarize_image):
+def transcribe_audio_openai(file_path, client):
+    print(f"Transcribing audio with OpenAI: {file_path}")
+    try:
+        with open(file_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        return transcript.text
+    except Exception as e:
+        print(f"Error transcribing audio file {file_path}: {e}")
+        return None
+
+
+def transcribe_audio_lemonfox(file_path, client):
+    print(f"Transcribing audio with Lemonfox: {file_path}")
+    try:
+        with open(file_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        return transcript.text
+    except Exception as e:
+        print(f"Error transcribing audio file {file_path}: {e}")
+        return None
+
+
+def summarize_audio_anthropic(transcript, client):
+    print("Summarizing audio transcript with Anthropic")
+    system_message = """
+    The assistant's job is to summarize the given audio transcription into 3-4 sentences. The first sentence should be the overview of the audio, and the rest should be the main points of the audio. The summary's language must be the same as the original audio use.
+
+    Here is the format for the summary:
+    \"\"\"
+    This audio is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
+    \"\"\"
+    """
+
+    try:
+        message = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=2000,
+            temperature=0.3,
+            system=system_message,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Audio transcript:\n{transcript[:2000]}"  # Limit content to 2000 characters
+                }
+            ]
+        )
+        print("Audio summary generated")
+        return message.content[0].text if message.content else None
+    except anthropic.APIError as e:
+        print(f"API error occurred: {e}")
+        return None
+
+
+def summarize_audio_openai(transcript, client):
+    print("Summarizing audio transcript with OpenAI")
+    system_message = """
+    The assistant's job is to summarize the given audio transcription into 3-4 sentences. The first sentence should be the overview of the audio, and the rest should be the main points of the audio. The summary's language must be the same as the original audio use.
+
+    Here is the format for the summary:
+    \"\"\"
+    This audio is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
+    \"\"\"
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": f"Audio transcript:\n{transcript[:2000]}"}
+                # Limit content to 2000 characters
+            ],
+            max_tokens=2000,
+            temperature=0.5
+        )
+        print("Audio summary generated")
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"API error occurred: {e}")
+        return None
+
+
+def summarize_audio(file_path, summarization_client, transcription_client, transcribe_function):
+    transcript = transcribe_function(file_path, transcription_client)
+    if transcript:
+        return summarize_audio_anthropic(transcript, summarization_client) if isinstance(summarization_client,
+                                                                                         anthropic.Anthropic) else summarize_audio_openai(
+            transcript, summarization_client)
+    return None
+
+
+def index_folder(folder_path, summarize_document, summarize_image, summarize_audio):
     folder_overview = []
 
     print(f"Indexing folder: {folder_path}")
@@ -286,6 +372,8 @@ def index_folder(folder_path, summarize_document, summarize_image):
                 summary = summarize_image(file_path)
             elif suffix in ['.txt', '.md', '.pdf', '.docx']:
                 summary = summarize_document(file_path)
+            elif suffix in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.opus', '.m4a', '.mp4', '.mpeg', '.mov', '.webm']:
+                summary = summarize_audio(file_path)
             else:
                 continue
 
@@ -303,26 +391,52 @@ def index_folder(folder_path, summarize_document, summarize_image):
 
 
 def main():
-    print("Welcome to the Document and Image Indexer and Summarizer!")
-    print("This script supports both Anthropic and OpenAI models.")
+    print("Welcome to the Document, Image, and Audio Indexer and Summarizer!")
+    print("This script supports both Anthropic and OpenAI models for summarization.")
+    print("For audio transcription, you can choose between OpenAI and Lemonfox.ai.")
 
     while True:
-        model_choice = input("Enter 'a' for Anthropic or 'o' for OpenAI: ").lower()
+        model_choice = input("Enter 'a' for Anthropic or 'o' for OpenAI for summarization: ").lower()
 
         if model_choice == 'a':
             api_key = get_api_key('anthropic')
-            client = anthropic.Anthropic(api_key=api_key)
-            summarize_document = lambda file_path: summarize_document_anthropic(file_path, client)
-            summarize_image = lambda file_path: summarize_image_anthropic(file_path, client)
+            summarization_client = anthropic.Anthropic(api_key=api_key)
+            summarize_document = lambda file_path: summarize_document_anthropic(file_path, summarization_client)
+            summarize_image = lambda file_path: summarize_image_anthropic(file_path, summarization_client)
             break
         elif model_choice == 'o':
             api_key = get_api_key('openai')
-            client = OpenAI(api_key=api_key)
-            summarize_document = lambda file_path: summarize_document_openai(file_path, client)
-            summarize_image = lambda file_path: summarize_image_openai(file_path, client)
+            summarization_client = OpenAI(api_key=api_key)
+            summarize_document = lambda file_path: summarize_document_openai(file_path, summarization_client)
+            summarize_image = lambda file_path: summarize_image_openai(file_path, summarization_client)
             break
         else:
             print("Invalid choice. Please enter 'a' or 'o'.")
+
+    while True:
+        audio_api_choice = input("Enter 'o' for OpenAI or 'l' for Lemonfox.ai for audio transcription: ").lower()
+
+        if audio_api_choice == 'o':
+            if model_choice == 'o':
+                transcription_client = summarization_client
+            else:
+                transcription_client = OpenAI(api_key=get_api_key('openai'))
+            transcribe_function = transcribe_audio_openai
+            print("OpenAI's Audio API will be used for transcription (Whisper-V2).")
+            break
+        elif audio_api_choice == 'l':
+            transcription_client = OpenAI(
+                api_key=get_api_key('lemonfox'),
+                base_url="https://api.lemonfox.ai/v1",
+            )
+            transcribe_function = transcribe_audio_lemonfox
+            print("Lemonfox.ai will be used for transcription (Whisper-V3).")
+            break
+        else:
+            print("Invalid choice. Please enter 'o' or 'l'.")
+
+    summarize_audio_lambda = lambda file_path: summarize_audio(file_path, summarization_client, transcription_client,
+                                                               transcribe_function)
 
     folder_path = input("Enter the folder path to index: ")
     folder_path = Path(folder_path).resolve()
@@ -332,7 +446,7 @@ def main():
         return
 
     print(f"Starting to index folder: {folder_path}")
-    folder_overview = index_folder(folder_path, summarize_document, summarize_image)
+    folder_overview = index_folder(folder_path, summarize_document, summarize_image, summarize_audio_lambda)
 
     if folder_overview:
         output_file = folder_path / 'folder_overview.json'
@@ -340,7 +454,8 @@ def main():
             json.dump(folder_overview, f, ensure_ascii=False, indent=2)
         print(f"Folder overview has been saved to {output_file}")
     else:
-        print("No documents or images were successfully summarized.")
+        print("No documents, images, or audio files were successfully summarized.")
+
 
 if __name__ == "__main__":
     main()

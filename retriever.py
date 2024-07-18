@@ -49,7 +49,10 @@ def create_results_folders(base_folder):
     text_results = filerag_results / 'text_results'
     text_results.mkdir(exist_ok=True)
 
-    return filerag_results, image_results, text_results
+    audio_results = filerag_results / 'audio_results'
+    audio_results.mkdir(exist_ok=True)
+
+    return filerag_results, image_results, text_results, audio_results
 
 
 def log_api_response(response, query, log_file):
@@ -198,9 +201,11 @@ def retrieve_document(file_id, folder_path, folder_overview):
             full_path = folder_path / item['file_path']
             try:
                 if full_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-                    # For image files, just return the path
                     print(f"Image file found: {full_path}")
                     return str(full_path), "<<image_file>>"
+                elif full_path.suffix.lower() in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.opus', '.m4a', '.mp4', '.mpeg', '.mov', '.webm']:
+                    print(f"Audio file found: {full_path}")
+                    return str(full_path), "<<audio_file>>"
                 elif full_path.suffix.lower() == '.pdf':
                     content = extract_pdf_content(full_path)
                     print(f"PDF file content retrieved: {full_path}")
@@ -231,7 +236,7 @@ def extract_docx_content(docx_path):
         return "<<Error reading Word file>>"
 
 
-def write_results(results, output_folder, is_image=False):
+def write_results(results, output_folder, is_image=False, is_audio=False):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     result_folder = output_folder / timestamp
     result_folder.mkdir(exist_ok=True)
@@ -242,6 +247,12 @@ def write_results(results, output_folder, is_image=False):
             new_file_name = f"{i}_{original_file.name}"
             shutil.copy2(original_file, result_folder / new_file_name)
         print(f"Image results copied to {result_folder}")
+    elif is_audio:
+        for i, (file_path, _) in enumerate(results, 1):
+            original_file = Path(file_path)
+            new_file_name = f"{i}_{original_file.name}"
+            shutil.copy2(original_file, result_folder / new_file_name)
+        print(f"Audio results copied to {result_folder}")
     else:
         output_file = result_folder / 'retrieved_text_results.txt'
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -284,7 +295,7 @@ def main():
 
     folder_path = overview_path.parent
     folder_overview = load_folder_overview(overview_path)
-    filerag_results, image_results_folder, text_results_folder = create_results_folders(folder_path)
+    filerag_results, image_results_folder, text_results_folder, audio_results_folder = create_results_folders(folder_path)
     log_file = filerag_results / 'api_response_log.txt'
 
     while True:
@@ -297,11 +308,14 @@ def main():
         if file_ids:
             text_results = []
             image_results = []
+            audio_results = []
             for file_id in file_ids:
                 retrieved_path, content = retrieve_document(file_id, folder_path, folder_overview)
                 if retrieved_path:
                     if content == "<<image_file>>":
                         image_results.append((retrieved_path, content))
+                    elif content == "<<audio_file>>":
+                        audio_results.append((retrieved_path, content))
                     else:
                         text_results.append((retrieved_path, content))
                     print(f"Retrieved document: {retrieved_path}")
@@ -312,15 +326,16 @@ def main():
                 write_results(text_results, text_results_folder)
             if image_results:
                 write_results(image_results, image_results_folder, is_image=True)
+            if audio_results:
+                write_results(audio_results, audio_results_folder, is_audio=True)
 
-            if not text_results and not image_results:
+            if not text_results and not image_results and not audio_results:
                 print("No documents could be retrieved.")
         else:
             print("No matching documents found.")
 
     print(f"API response log has been saved to {log_file}")
     print("Document retrieval process completed.")
-
 
 if __name__ == "__main__":
     main()
