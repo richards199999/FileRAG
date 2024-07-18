@@ -1,7 +1,9 @@
+import base64
 import json
 import shutil
 from pathlib import Path
 import anthropic
+import cv2
 from openai import OpenAI
 import os
 import datetime
@@ -52,7 +54,10 @@ def create_results_folders(base_folder):
     audio_results = filerag_results / 'audio_results'
     audio_results.mkdir(exist_ok=True)
 
-    return filerag_results, image_results, text_results, audio_results
+    video_results = filerag_results / 'video_results'
+    video_results.mkdir(exist_ok=True)
+
+    return filerag_results, image_results, text_results, audio_results, video_results
 
 
 def log_api_response(response, query, log_file):
@@ -106,14 +111,7 @@ def extract_pdf_content(pdf_path, max_pages=1):
 def process_query_anthropic(query, folder_overview, client, log_file):
     system_message = """
     The assistant's job is to pick the best file(s) that match(es) the given query using the file name and the file summary. If there is multiple file, use comma to seperate. It only need to return the file id in a JSON format. It should not miss any file that is related to the query. It *MUST* only return the JSON string without any other text, or it will be considered as an error. Do not put the JSON string inside the triple backticks, or it will be considered as an error.
-    Here is the query:
-    \"\"\"
-    {query}
-    \"\"\"
-    Here is the overview of the knowledge base's structure:
-    \"\"\"
-    {folder_overview}
-    \"\"\"
+    Reminder: The description of the audio file might be affected by the original transcription, so it might have recognition errors; DO NOT be strict with the audio file.
     Example output format (It must follow this format, or it will be considered as an error):
     \"\"\"
     {
@@ -154,14 +152,7 @@ def process_query_anthropic(query, folder_overview, client, log_file):
 def process_query_openai(query, folder_overview, client, log_file):
     system_message = """
     The assistant's job is to pick the best file(s) that match(es) the given query using the file name and the file summary. If there is multiple file, use comma to seperate. It only need to return the file id in a JSON format. It should not miss any file that is related to the query. It *MUST* only return the JSON string without any other text, or it will be considered as an error. Do not put the JSON string inside the triple backticks, or it will be considered as an error.
-    Here is the query:
-    \"\"\"
-    {query}
-    \"\"\"
-    Here is the overview of the knowledge base's structure:
-    \"\"\"
-    {folder_overview}
-    \"\"\"
+    Reminder: The description of the audio file might be affected by the original transcription, so it might have recognition errors; DO NOT be strict with the audio file.
     Example output format (It must follow this format, or it will be considered as an error):
     \"\"\"
     {
@@ -203,9 +194,12 @@ def retrieve_document(file_id, folder_path, folder_overview):
                 if full_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
                     print(f"Image file found: {full_path}")
                     return str(full_path), "<<image_file>>"
-                elif full_path.suffix.lower() in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.opus', '.m4a', '.mp4', '.mpeg', '.mov', '.webm']:
+                elif full_path.suffix.lower() in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.opus', '.m4a']:
                     print(f"Audio file found: {full_path}")
                     return str(full_path), "<<audio_file>>"
+                elif full_path.suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv']:
+                    print(f"Video file found: {full_path}")
+                    return str(full_path), "<<video_file>>"
                 elif full_path.suffix.lower() == '.pdf':
                     content = extract_pdf_content(full_path)
                     print(f"PDF file content retrieved: {full_path}")
@@ -236,23 +230,17 @@ def extract_docx_content(docx_path):
         return "<<Error reading Word file>>"
 
 
-def write_results(results, output_folder, is_image=False, is_audio=False):
+def write_results(results, output_folder, is_image=False, is_audio=False, is_video=False):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     result_folder = output_folder / timestamp
     result_folder.mkdir(exist_ok=True)
 
-    if is_image:
+    if is_image or is_audio or is_video:
         for i, (file_path, _) in enumerate(results, 1):
             original_file = Path(file_path)
             new_file_name = f"{i}_{original_file.name}"
             shutil.copy2(original_file, result_folder / new_file_name)
-        print(f"Image results copied to {result_folder}")
-    elif is_audio:
-        for i, (file_path, _) in enumerate(results, 1):
-            original_file = Path(file_path)
-            new_file_name = f"{i}_{original_file.name}"
-            shutil.copy2(original_file, result_folder / new_file_name)
-        print(f"Audio results copied to {result_folder}")
+        print(f"{'Image' if is_image else 'Audio' if is_audio else 'Video'} results copied to {result_folder}")
     else:
         output_file = result_folder / 'retrieved_text_results.txt'
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -265,6 +253,15 @@ def write_results(results, output_folder, is_image=False, is_audio=False):
                 f.write('\n"""\n\n')
         print(f"Text results written to {output_file}")
 
+def extract_video_frame(video_path, frame_number=0):
+    video = cv2.VideoCapture(str(video_path))
+    video.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+    ret, frame = video.read()
+    video.release()
+    if ret:
+        _, buffer = cv2.imencode('.jpg', frame)
+        return base64.b64encode(buffer).decode('utf-8')
+    return None
 
 def main():
     print("Welcome to the Document Retriever!")
@@ -295,7 +292,7 @@ def main():
 
     folder_path = overview_path.parent
     folder_overview = load_folder_overview(overview_path)
-    filerag_results, image_results_folder, text_results_folder, audio_results_folder = create_results_folders(folder_path)
+    filerag_results, image_results_folder, text_results_folder, audio_results_folder, video_results_folder = create_results_folders(folder_path)
     log_file = filerag_results / 'api_response_log.txt'
 
     while True:
@@ -309,6 +306,7 @@ def main():
             text_results = []
             image_results = []
             audio_results = []
+            video_results = []
             for file_id in file_ids:
                 retrieved_path, content = retrieve_document(file_id, folder_path, folder_overview)
                 if retrieved_path:
@@ -316,6 +314,8 @@ def main():
                         image_results.append((retrieved_path, content))
                     elif content == "<<audio_file>>":
                         audio_results.append((retrieved_path, content))
+                    elif content == "<<video_file>>":
+                        video_results.append((retrieved_path, content))
                     else:
                         text_results.append((retrieved_path, content))
                     print(f"Retrieved document: {retrieved_path}")
@@ -328,8 +328,10 @@ def main():
                 write_results(image_results, image_results_folder, is_image=True)
             if audio_results:
                 write_results(audio_results, audio_results_folder, is_audio=True)
+            if video_results:
+                write_results(video_results, video_results_folder, is_video=True)
 
-            if not text_results and not image_results and not audio_results:
+            if not text_results and not image_results and not audio_results and not video_results:
                 print("No documents could be retrieved.")
         else:
             print("No matching documents found.")

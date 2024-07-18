@@ -8,6 +8,8 @@ import PyPDF2
 from docx import Document
 from PIL import Image
 import io
+import cv2
+import numpy as np
 
 
 def get_api_key(api_name):
@@ -358,7 +360,160 @@ def summarize_audio(file_path, summarization_client, transcription_client, trans
     return None
 
 
-def index_folder(folder_path, summarize_document, summarize_image, summarize_audio):
+def extract_key_frames(video_path, num_frames=5):
+    video_path_str = str(video_path)  # Convert Path to string
+    video = cv2.VideoCapture(video_path_str)
+    if not video.isOpened():
+        print(f"Error opening video file: {video_path_str}")
+        return []
+
+    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+
+    key_frames = []
+    for idx in frame_indices:
+        video.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame = video.read()
+        if ret:
+            key_frames.append(frame)
+
+    video.release()
+    return key_frames
+
+
+def encode_frame(frame):
+    _, buffer = cv2.imencode('.jpg', frame)
+    return base64.b64encode(buffer).decode('utf-8')
+
+
+def summarize_video_frames_anthropic(frames, client):
+    print("Summarizing video frames with Anthropic")
+    encoded_frames = [encode_frame(frame) for frame in frames]
+
+    system_message = """
+    The assistant's job is to summarize the given video frames into 3-4 sentences. The first sentence should be an overview, and the rest should describe the main elements or features of the frame. And if the frame contains text, please include the text in the summary.
+
+    Here is the format for the summary:
+    \"\"\"
+    This video is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
+    \"\"\"
+    """
+
+    try:
+        message = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=1500,
+            temperature=0.3,
+            system=system_message,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Here are the video frames."},
+                        *[{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": frame}} for
+                          frame in encoded_frames]
+                    ]
+                }
+            ]
+        )
+        print("Key frames summary generated")
+        return message.content[0].text if message.content else None
+    except anthropic.APIError as e:
+        print(f"API error occurred: {e}")
+        return None
+
+
+def summarize_video_frames_openai(frames, client):
+    print("Summarizing video frames with OpenAI")
+    encoded_frames = [encode_frame(frame) for frame in frames]
+
+    system_message = """
+    The assistant's job is to summarize the given video frames into 3-4 sentences. The first sentence should be an overview, and the rest should describe the main elements or features of the frame. And if the frame contains text, please include the text in the summary.
+
+    Here is the format for the summary:
+    \"\"\"
+    This video is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
+    \"\"\"
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_message},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Here are the video frames."},
+                        *[{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame}"}} for frame in
+                          encoded_frames]
+                    ]
+                }
+            ],
+            max_tokens=300,
+        )
+        print("Key frames summary generated")
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"API error occurred: {e}")
+        return None
+
+
+def summarize_video(file_path, summarization_client, transcription_client, transcribe_function):
+    print("Understanding video")
+    key_frames = extract_key_frames(file_path)
+    if not key_frames:
+        print(f"Failed to extract key frames from {file_path}")
+        return None
+
+    frames_summary = summarize_video_frames_anthropic(key_frames, summarization_client) if isinstance(
+        summarization_client, anthropic.Anthropic) else summarize_video_frames_openai(key_frames, summarization_client)
+
+    audio_summary = summarize_audio(file_path, summarization_client, transcription_client, transcribe_function)
+
+    system_message = """
+    The assistant's job is to summarize the given video into 3-4 sentences by using the description of the frames and the background audio. The first sentence should be an overview, and the rest should describe the main elements or features of the video. And if the frame contains text, please include the text in the summary.
+
+    Here is the format for the summary:
+    \"\"\"
+    This video is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
+    \"\"\"
+    """
+
+    try:
+        if isinstance(summarization_client, anthropic.Anthropic):
+            message = summarization_client.messages.create(
+                model="claude-3-5-sonnet-20240620",
+                max_tokens=1500,
+                temperature=0.3,
+                system=system_message,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Key frames summary: {frames_summary}\nBackground audio summary: {audio_summary}"
+                    }
+                ]
+            )
+            print("Video summary generated")
+            return message.content[0].text if message.content else None
+        else:
+            response = summarization_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user",
+                     "content": f"Key frames summary: {frames_summary}\nBackground audio summary: {audio_summary}"}
+                ],
+                max_tokens=300,
+            )
+            print("Video summary generated")
+            return response.choices[0].message.content
+    except Exception as e:
+        print(f"API error occurred: {e}")
+        return None
+
+
+def index_folder(folder_path, summarize_document, summarize_image, summarize_audio, summarize_video):
     folder_overview = []
 
     print(f"Indexing folder: {folder_path}")
@@ -372,8 +527,10 @@ def index_folder(folder_path, summarize_document, summarize_image, summarize_aud
                 summary = summarize_image(file_path)
             elif suffix in ['.txt', '.md', '.pdf', '.docx']:
                 summary = summarize_document(file_path)
-            elif suffix in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.opus', '.m4a', '.mp4', '.mpeg', '.mov', '.webm']:
+            elif suffix in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.opus', '.m4a']:
                 summary = summarize_audio(file_path)
+            elif suffix in ['.mp4', '.avi', '.mov', '.mkv']:
+                summary = summarize_video(file_path)
             else:
                 continue
 
@@ -391,7 +548,7 @@ def index_folder(folder_path, summarize_document, summarize_image, summarize_aud
 
 
 def main():
-    print("Welcome to the Document, Image, and Audio Indexer and Summarizer!")
+    print("Welcome to the Document, Image, Audio, and Video Indexer and Summarizer!")
     print("This script supports both Anthropic and OpenAI models for summarization.")
     print("For audio transcription, you can choose between OpenAI and Lemonfox.ai.")
 
@@ -403,12 +560,14 @@ def main():
             summarization_client = anthropic.Anthropic(api_key=api_key)
             summarize_document = lambda file_path: summarize_document_anthropic(file_path, summarization_client)
             summarize_image = lambda file_path: summarize_image_anthropic(file_path, summarization_client)
+            summarize_video_frames = lambda frames: summarize_video_frames_anthropic(frames, summarization_client)
             break
         elif model_choice == 'o':
             api_key = get_api_key('openai')
             summarization_client = OpenAI(api_key=api_key)
             summarize_document = lambda file_path: summarize_document_openai(file_path, summarization_client)
             summarize_image = lambda file_path: summarize_image_openai(file_path, summarization_client)
+            summarize_video_frames = lambda frames: summarize_video_frames_openai(frames, summarization_client)
             break
         else:
             print("Invalid choice. Please enter 'a' or 'o'.")
@@ -437,6 +596,8 @@ def main():
 
     summarize_audio_lambda = lambda file_path: summarize_audio(file_path, summarization_client, transcription_client,
                                                                transcribe_function)
+    summarize_video_lambda = lambda file_path: summarize_video(file_path, summarization_client, transcription_client,
+                                                               transcribe_function)
 
     folder_path = input("Enter the folder path to index: ")
     folder_path = Path(folder_path).resolve()
@@ -446,7 +607,8 @@ def main():
         return
 
     print(f"Starting to index folder: {folder_path}")
-    folder_overview = index_folder(folder_path, summarize_document, summarize_image, summarize_audio_lambda)
+    folder_overview = index_folder(folder_path, summarize_document, summarize_image, summarize_audio_lambda,
+                                   summarize_video_lambda)
 
     if folder_overview:
         output_file = folder_path / 'folder_overview.json'
@@ -454,7 +616,7 @@ def main():
             json.dump(folder_overview, f, ensure_ascii=False, indent=2)
         print(f"Folder overview has been saved to {output_file}")
     else:
-        print("No documents, images, or audio files were successfully summarized.")
+        print("No documents, images, audio files, or videos were successfully summarized.")
 
 
 if __name__ == "__main__":
