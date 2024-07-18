@@ -1,4 +1,4 @@
-# FileRAG: File-based Retrieval-Augmented Generation System
+# FileRAG: File-based Multimodal Retrieval-Augmented Generation System
 
 ## Motivation
 
