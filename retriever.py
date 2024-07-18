@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 import anthropic
 from openai import OpenAI
@@ -12,7 +13,6 @@ import re
 def get_api_key(api_name):
     env_var = f"{api_name.upper()}_API_KEY"
 
-    # Always prompt for the API key
     api_key = input(f"Please enter your {api_name} API key: ").strip()
 
     if api_key:
@@ -33,8 +33,20 @@ def load_folder_overview(overview_path):
     return data
 
 
+def create_results_folders(base_folder):
+    filerag_results = base_folder / 'filerag_results'
+    filerag_results.mkdir(exist_ok=True)
+
+    image_results = filerag_results / 'image_results'
+    image_results.mkdir(exist_ok=True)
+
+    text_results = filerag_results / 'text_results'
+    text_results.mkdir(exist_ok=True)
+
+    return filerag_results, image_results, text_results
+
+
 def log_api_response(response, query, log_file):
-    print(f"Logging API response to {log_file}")
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_file, 'a', encoding='utf-8') as f:
         f.write(f"\n--- API Response Log: {timestamp} ---\n")
@@ -179,7 +191,11 @@ def retrieve_document(file_id, folder_path, folder_overview):
         if file_id in [item['file_id'], item['file_name'], Path(item['file_path']).name]:
             full_path = folder_path / item['file_path']
             try:
-                if full_path.suffix.lower() == '.pdf':
+                if full_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                    # For image files, just return the path
+                    print(f"Image file found: {full_path}")
+                    return str(full_path), "<<image_file>>"
+                elif full_path.suffix.lower() == '.pdf':
                     content = extract_pdf_content(full_path)
                     print(f"PDF file content retrieved: {full_path}")
                 elif full_path.suffix.lower() == '.docx':
@@ -189,9 +205,10 @@ def retrieve_document(file_id, folder_path, folder_overview):
                     with open(full_path, 'r', encoding='utf-8') as f:
                         content = f.read()
                     print(f"Text file content retrieved: {full_path}")
-                return item['file_path'], content
+                return str(full_path), content
             except Exception as e:
                 print(f"Error reading file {full_path}: {e}")
+                return str(full_path), f"<<Error reading file: {e}>>"
     print(f"File ID {file_id} not found in folder overview")
     return None, None
 
@@ -208,28 +225,28 @@ def extract_docx_content(docx_path):
         return "<<Error reading Word file>>"
 
 
-def write_results(results, output_file):
-    print(f"Writing results to {output_file}")
-    with open(output_file, 'w', encoding='utf-8') as f:
-        for i, (file_path, content) in enumerate(results, 1):
-            f.write(f'--- Retrieved Document {i} ---\n')
-            f.write(f'Original File Path: "{file_path}"\n')
-            f.write('Original File Content:\n')
-            if content == "<<Non-text file>>":
-                f.write(content + "\n")
-            else:
+def write_results(results, output_folder, is_image=False):
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_folder = output_folder / timestamp
+    result_folder.mkdir(exist_ok=True)
+
+    if is_image:
+        for i, (file_path, _) in enumerate(results, 1):
+            original_file = Path(file_path)
+            new_file_name = f"{i}_{original_file.name}"
+            shutil.copy2(original_file, result_folder / new_file_name)
+        print(f"Image results copied to {result_folder}")
+    else:
+        output_file = result_folder / 'retrieved_text_results.txt'
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for i, (file_path, content) in enumerate(results, 1):
+                f.write(f'--- Retrieved Document {i} ---\n')
+                f.write(f'Original File Path: "{file_path}"\n')
+                f.write('Original File Content:\n')
                 f.write('"""\n')
                 f.write(content)
-                f.write('\n"""\n')
-            f.write('\n')
-    print(f"Results written to {output_file}")
-
-    # Verify the file was written
-    if os.path.exists(output_file):
-        print(f"Verified: {output_file} exists.")
-        print(f"File size: {os.path.getsize(output_file)} bytes")
-    else:
-        print(f"Error: {output_file} was not created.")
+                f.write('\n"""\n\n')
+        print(f"Text results written to {output_file}")
 
 
 def main():
@@ -261,7 +278,8 @@ def main():
 
     folder_path = overview_path.parent
     folder_overview = load_folder_overview(overview_path)
-    log_file = folder_path / 'api_response_log.txt'
+    filerag_results, image_results_folder, text_results_folder = create_results_folders(folder_path)
+    log_file = filerag_results / 'api_response_log.txt'
 
     while True:
         query = input("Enter your query (or 'quit' to exit): ")
@@ -271,20 +289,25 @@ def main():
         file_ids = process_query(query, folder_overview, client, log_file)
         print(f"File IDs returned by process_query: {file_ids}")
         if file_ids:
-            results = []
+            text_results = []
+            image_results = []
             for file_id in file_ids:
                 retrieved_path, content = retrieve_document(file_id, folder_path, folder_overview)
                 if retrieved_path:
-                    results.append((retrieved_path, content))
+                    if content == "<<image_file>>":
+                        image_results.append((retrieved_path, content))
+                    else:
+                        text_results.append((retrieved_path, content))
                     print(f"Retrieved document: {retrieved_path}")
                 else:
                     print(f"Error: Unable to retrieve the document with file ID: {file_id}")
 
-            if results:
-                output_file = folder_path / 'retrieve_result.txt'
-                write_results(results, output_file)
-                print(f"Retrieved content has been saved to {output_file}")
-            else:
+            if text_results:
+                write_results(text_results, text_results_folder)
+            if image_results:
+                write_results(image_results, image_results_folder, is_image=True)
+
+            if not text_results and not image_results:
                 print("No documents could be retrieved.")
         else:
             print("No matching documents found.")
