@@ -8,7 +8,7 @@ The primary motivations for developing FileRAG are:
 
 1. **Preserving Document Context**: Unlike traditional RAG systems that often retrieve fragmented text snippets, FileRAG maintains the integrity of entire documents, ensuring that the context and coherence of information are preserved.
 
-2. **Multimodal Indexing and Retrieval**: By using frontier models with vision and audio capabilities, FileRAG is able to index and retrieve text, images, audio files, and now video files, providing a comprehensive file retrieval system.
+2. **Multimodal Indexing and Retrieval**: By using frontier models with vision and audio capabilities, FileRAG is able to index and retrieve text, images, audio files, and video files, providing a comprehensive file retrieval system.
 
 3. **Improved Precision**: By summarizing and indexing entire documents and media files, FileRAG achieves higher precision in retrieving relevant information, especially crucial in fields such as academia, legal research, technical documentation, and multimedia content management.
 
@@ -22,7 +22,7 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 - **Multiple File Format Support**: Handles PDF, DOCX, TXT, MD, various image files (JPEG, PNG, GIF, WEBP), audio files (MP3, WAV, OGG, FLAC, AAC, OPUS, M4A), and video files (MP4, AVI, MOV, MKV).
 - **Intelligent Summarization**: Generates concise summaries of files for efficient indexing, including specialized summarization for audio transcripts and video content.
 - **Video Processing**: Extracts key frames from videos and summarizes both visual and audio content for comprehensive video understanding.
-- **Context-Aware Retrieval**: Retrieves relevant files based on user queries using advanced language models, now including video content.
+- **Context-Aware Retrieval**: Retrieves relevant files based on user queries using advanced language models, including video content.
 - **Flexible API Integration**: Easily switch between different AI providers (Anthropic and OpenAI) for summarization and audio transcription (OpenAI and Lemonfox.ai).
 - **Organized Results**: Stores retrieval results in a structured folder system, separating text, image, audio, and video results for easy access and review.
 
@@ -32,7 +32,7 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 
 ## Components
 
-1. **File Indexer** (`indexer.py`): Indexes and summarizes files in a specified folder, including text, images, audio, and now video files.
+1. **File Indexer** (`indexer.py`): Indexes and summarizes files in a specified folder, including text, images, audio, and video files.
 2. **File Retriever** (`retriever.py`): Retrieves relevant files based on user queries, handling text, images, audio files, and video files.
 
 ## Prerequisites
@@ -90,11 +90,21 @@ By addressing these challenges, FileRAG aims to provide a more robust and effect
 
 4. Specify the path to the `folder_overview.json` file created by the indexer.
 
-5. Enter your queries when prompted. The script will retrieve relevant documents, images, audio files, and video files, saving them in the `filerag_results` folder:
-   - Text results are saved in `text_results/YYYYMMDD_HHMMSS/retrieved_text_results.txt`
-   - Image results are copied to `image_results/YYYYMMDD_HHMMSS/`
-   - Audio results are copied to `audio_results/YYYYMMDD_HHMMSS/`
-   - Video results are copied to `video_results/YYYYMMDD_HHMMSS/`
+5. Enter your queries when prompted. The script will retrieve relevant documents, images, audio files, and video files, saving them in the `filerag_results` folder with the following structure:
+
+   ```
+   filerag_results/
+   ├── api_response_log.txt
+   ├── YYYYMMDD_HHMMSS/
+   │   ├── image_results/
+   │   ├── text_results/
+   │   │   └── retrieved_text_results.txt
+   │   ├── audio_results/
+   │   └── video_results/
+   └── ...
+   ```
+
+   Each query session creates a new timestamped folder (YYYYMMDD_HHMMSS) containing the results for that session.
 
 ## Configuration
 
