@@ -269,7 +269,7 @@ def extract_video_frame(video_path, frame_number=0):
 
 
 def main():
-    print("Welcome to the Document Retriever!")
+    print("Welcome to the Multimodal File Retriever!")
     print("This script supports both Anthropic and OpenAI models.")
 
     while True:

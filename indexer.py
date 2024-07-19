@@ -548,7 +548,7 @@ def index_folder(folder_path, summarize_document, summarize_image, summarize_aud
 
 
 def main():
-    print("Welcome to the Document, Image, Audio, and Video Indexer and Summarizer!")
+    print("Welcome to the Multimodal File Indexer!")
     print("This script supports both Anthropic and OpenAI models for summarization.")
     print("For audio transcription, you can choose between OpenAI and Lemonfox.ai.")
 
