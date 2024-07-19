@@ -45,19 +45,23 @@ def create_results_folders(base_folder):
     filerag_results = base_folder / 'filerag_results'
     filerag_results.mkdir(exist_ok=True)
 
-    image_results = filerag_results / 'image_results'
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_folder = filerag_results / timestamp
+    session_folder.mkdir(exist_ok=True)
+
+    image_results = session_folder / 'image_results'
     image_results.mkdir(exist_ok=True)
 
-    text_results = filerag_results / 'text_results'
+    text_results = session_folder / 'text_results'
     text_results.mkdir(exist_ok=True)
 
-    audio_results = filerag_results / 'audio_results'
+    audio_results = session_folder / 'audio_results'
     audio_results.mkdir(exist_ok=True)
 
-    video_results = filerag_results / 'video_results'
+    video_results = session_folder / 'video_results'
     video_results.mkdir(exist_ok=True)
 
-    return filerag_results, image_results, text_results, audio_results, video_results
+    return filerag_results, session_folder, image_results, text_results, audio_results, video_results
 
 
 def log_api_response(response, query, log_file):
@@ -185,6 +189,7 @@ def process_query_openai(query, folder_overview, client, log_file):
         log_api_response(str(e), query, log_file)
         return []
 
+
 def retrieve_document(file_id, folder_path, folder_overview):
     print(f"Retrieving document: {file_id}")
     for item in folder_overview:
@@ -230,19 +235,17 @@ def extract_docx_content(docx_path):
         return "<<Error reading Word file>>"
 
 
-def write_results(results, output_folder, is_image=False, is_audio=False, is_video=False):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    result_folder = output_folder / timestamp
-    result_folder.mkdir(exist_ok=True)
-
+def write_results(results, session_folder, is_image=False, is_audio=False, is_video=False):
     if is_image or is_audio or is_video:
+        result_folder = session_folder / (
+            'image_results' if is_image else 'audio_results' if is_audio else 'video_results')
         for i, (file_path, _) in enumerate(results, 1):
             original_file = Path(file_path)
             new_file_name = f"{i}_{original_file.name}"
             shutil.copy2(original_file, result_folder / new_file_name)
         print(f"{'Image' if is_image else 'Audio' if is_audio else 'Video'} results copied to {result_folder}")
     else:
-        output_file = result_folder / 'retrieved_text_results.txt'
+        output_file = session_folder / 'text_results' / 'retrieved_text_results.txt'
         with open(output_file, 'w', encoding='utf-8') as f:
             for i, (file_path, content) in enumerate(results, 1):
                 f.write(f'--- Retrieved Document {i} ---\n')
@@ -253,6 +256,7 @@ def write_results(results, output_folder, is_image=False, is_audio=False, is_vid
                 f.write('\n"""\n\n')
         print(f"Text results written to {output_file}")
 
+
 def extract_video_frame(video_path, frame_number=0):
     video = cv2.VideoCapture(str(video_path))
     video.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
@@ -262,6 +266,7 @@ def extract_video_frame(video_path, frame_number=0):
         _, buffer = cv2.imencode('.jpg', frame)
         return base64.b64encode(buffer).decode('utf-8')
     return None
+
 
 def main():
     print("Welcome to the Document Retriever!")
@@ -292,7 +297,8 @@ def main():
 
     folder_path = overview_path.parent
     folder_overview = load_folder_overview(overview_path)
-    filerag_results, image_results_folder, text_results_folder, audio_results_folder, video_results_folder = create_results_folders(folder_path)
+    filerag_results, session_folder, image_results_folder, text_results_folder, audio_results_folder, video_results_folder = create_results_folders(
+        folder_path)
     log_file = filerag_results / 'api_response_log.txt'
 
     while True:
@@ -323,13 +329,13 @@ def main():
                     print(f"Error: Unable to retrieve the document with file ID: {file_id}")
 
             if text_results:
-                write_results(text_results, text_results_folder)
+                write_results(text_results, session_folder)
             if image_results:
-                write_results(image_results, image_results_folder, is_image=True)
+                write_results(image_results, session_folder, is_image=True)
             if audio_results:
-                write_results(audio_results, audio_results_folder, is_audio=True)
+                write_results(audio_results, session_folder, is_audio=True)
             if video_results:
-                write_results(video_results, video_results_folder, is_video=True)
+                write_results(video_results, session_folder, is_video=True)
 
             if not text_results and not image_results and not audio_results and not video_results:
                 print("No documents could be retrieved.")
@@ -338,6 +344,7 @@ def main():
 
     print(f"API response log has been saved to {log_file}")
     print("Document retrieval process completed.")
+
 
 if __name__ == "__main__":
     main()
