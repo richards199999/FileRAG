@@ -1,5 +1,9 @@
 # FileRAG: A File-based Multimodal Retrieval-Augmented Generation System
 
+## Demo
+
+https://github.com/user-attachments/assets/3202e8a7-4240-4fd5-a2e0-cc23041b6558
+
 ## Motivation
 
 Traditional Retrieval-Augmented Generation (RAG) systems often struggle with maintaining context and coherence when dealing with large documents or complex information structures. FileRAG was born out of the need for a more efficient and context-aware knowledge/document/information retrieval system.
