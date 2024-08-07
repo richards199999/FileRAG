@@ -33,8 +33,8 @@ def get_api_key(api_name):
     return api_key
 
 
-def summarize_document_anthropic(file_path, client):
-    print(f"Summarizing with Anthropic: {file_path}")
+def summarize_document(file_path, client):
+    print(f"Summarizing document: {file_path}")
     file_content = read_file_content(file_path)
     if file_content is None:
         return None
@@ -48,53 +48,105 @@ def summarize_document_anthropic(file_path, client):
     """
 
     try:
-        message = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=1500,
-            temperature=0.3,
-            system=system_message,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"File name: {file_path.name}\n\nFile content:\n{file_content[:2000]}"
-                    # Limit content to 2000 characters
-                }
-            ]
-        )
+        if isinstance(client, anthropic.Anthropic):
+            message = client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=1500,
+                temperature=0.3,
+                system=system_message,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"File name: {file_path.name}\n\nFile content:\n{file_content[:2000]}"
+                    }
+                ]
+            )
+            summary = message.content[0].text if message.content else None
+        else:  # OpenAI
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": f"File name: {file_path.name}\n\nFile content:\n{file_content[:2000]}"}
+                ],
+                max_tokens=1000,
+                temperature=0.5
+            )
+            summary = response.choices[0].message.content
+        
         print(f"Summary generated for: {file_path}")
-        return message.content[0].text if message.content else None
-    except anthropic.APIError as e:
+        return summary
+    except Exception as e:
         print(f"API error occurred: {e}")
         return None
 
 
-def summarize_document_openai(file_path, client):
-    print(f"Summarizing with OpenAI: {file_path}")
-    file_content = read_file_content(file_path)
-    if file_content is None:
+def summarize_image(file_path, client):
+    print(f"Summarizing image: {file_path}")
+
+    try:
+        media_type = get_image_media_type(file_path)
+        with open(file_path, "rb") as image_file:
+            image_data = base64.b64encode(image_file.read()).decode('utf-8')
+    except Exception as e:
+        print(f"Error processing image file {file_path}: {e}")
         return None
 
     system_message = """
-    The assistant's job is to summarize the given article into 3-4 sentences. The first sentence should be the overview of the file, and the rest should be the main points of the article. The summary's language must be the same as the passage use.
+    The assistant's job is to summarize the given image into 3-4 sentences. The first sentence should be an overview, and the rest should describe the main elements or features of the image. And if the image contains text, please include the text in the summary.
     Here is the format for the summary:
     \"\"\"
-    This file is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
+    This image is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
     \"\"\"
     """
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": f"File name: {file_path.name}\n\nFile content:\n{file_content[:2000]}"}
-                # Limit content to 2000 characters
-            ],
-            max_tokens=1000,
-            temperature=0.5
-        )
-        print(f"Summary generated for: {file_path}")
-        return response.choices[0].message.content
+        if isinstance(client, anthropic.Anthropic):
+            message = client.messages.create(
+                model="claude-3-5-sonnet-20240620",
+                max_tokens=1500,
+                temperature=0.3,
+                system=system_message,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_data,
+                                }
+                            },
+                            {"type": "text", "text": "Here is the image to summarize:"}
+                        ]
+                    }
+                ]
+            )
+            summary = message.content[0].text if message.content else None
+        else:  # OpenAI
+            response = client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Summarize this image in 3-4 sentences."},
+                            {
+                                "type": "image_url",
+                                "image_url": f"data:{media_type};base64,{image_data}",
+                            },
+                        ],
+                    }
+                ],
+                max_tokens=300,
+            )
+            summary = response.choices[0].message.content
+        
+        print(f"Summary generated for image: {file_path}")
+        return summary
     except Exception as e:
         print(f"API error occurred: {e}")
         return None
@@ -116,109 +168,6 @@ def get_image_media_type(file_path):
                 raise ValueError(f"Unsupported image type: {format}")
     except Exception as e:
         raise ValueError(f"Error determining image type: {e}")
-
-
-def summarize_image_anthropic(file_path, client):
-    print(f"Summarizing image with Anthropic: {file_path}")
-
-    try:
-        media_type = get_image_media_type(file_path)
-        try:
-            with open(file_path, "rb") as image_file:
-                image_data = base64.b64encode(image_file.read()).decode('utf-8')
-        except Exception as e:
-            print(f"Error reading image file {file_path}: {e}")
-            return None
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        return None
-
-    system_message = """
-    The assistant's job is to summarize the given image into 3-4 sentences. The first sentence should be an overview, and the rest should describe the main elements or features of the image. And if the image contains text, please include the text in the summary.
-    Here is the format for the summary:
-    \"\"\"
-    This image is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
-    \"\"\"
-    """
-
-    try:
-        message = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
-            max_tokens=1500,
-            temperature=0.3,
-            system=system_message,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": image_data,
-                            }
-                        },
-                        {"type": "text",
-                         "text": "Here is the image to summarize:"}
-                    ]
-                }
-            ]
-        )
-        print(f"Summary generated for image: {file_path}")
-        return message.content[0].text if message.content else None
-    except anthropic.APIError as e:
-        print(f"API error occurred: {e}")
-        return None
-
-
-def summarize_image_openai(file_path, client):
-    print(f"Summarizing image with OpenAI: {file_path}")
-
-    try:
-        media_type = get_image_media_type(file_path)
-        try:
-            with open(file_path, "rb") as image_file:
-                image_data = base64.b64encode(image_file.read()).decode('utf-8')
-        except Exception as e:
-            print(f"Error reading image file {file_path}: {e}")
-            return None
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        return None
-
-    system_message = """
-    The assistant's job is to summarize the given image into 3-4 sentences. The first sentence should be an overview, and the rest should describe the main elements or features of the image. And if the image contains text, please include the text in the summary.
-    Here is the format for the summary:
-    \"\"\"
-    This image is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
-    \"\"\"
-    """
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": system_message},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text",
-                         "text": "Summarize this image in 3-4 sentences. The first sentence should be an overview, and the rest should describe the main elements or features of the image."},
-                        {
-                            "type": "image_url",
-                            "image_url": f"data:{media_type};base64,{image_data}",
-                        },
-                    ],
-                }
-            ],
-            max_tokens=300,
-        )
-        print(f"Summary generated for image: {file_path}")
-        return response.choices[0].message.content
-    except Exception as e:
-        print(f"API error occurred: {e}")
-        return None
 
 
 def read_file_content(file_path):
@@ -291,8 +240,8 @@ def transcribe_audio_lemonfox(file_path, client):
         return None
 
 
-def summarize_audio_anthropic(transcript, client):
-    print("Summarizing audio transcript with Anthropic")
+def summarize_audio_transcript(transcript, client):
+    print("Summarizing audio transcript")
     system_message = """
     The assistant's job is to summarize the given audio transcription into 3-4 sentences. The first sentence should be the overview of the audio, and the rest should be the main points of the audio. The summary's language must be the same as the original audio use.
 
@@ -303,49 +252,34 @@ def summarize_audio_anthropic(transcript, client):
     """
 
     try:
-        message = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=2000,
-            temperature=0.3,
-            system=system_message,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Audio transcript:\n{transcript[:2000]}"  # Limit content to 2000 characters
-                }
-            ]
-        )
+        if isinstance(client, anthropic.Anthropic):
+            message = client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=2000,
+                temperature=0.3,
+                system=system_message,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Audio transcript:\n{transcript[:2000]}"
+                    }
+                ]
+            )
+            summary = message.content[0].text if message.content else None
+        else:  # OpenAI
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": f"Audio transcript:\n{transcript[:2000]}"}
+                ],
+                max_tokens=2000,
+                temperature=0.5
+            )
+            summary = response.choices[0].message.content
+        
         print("Audio summary generated")
-        return message.content[0].text if message.content else None
-    except anthropic.APIError as e:
-        print(f"API error occurred: {e}")
-        return None
-
-
-def summarize_audio_openai(transcript, client):
-    print("Summarizing audio transcript with OpenAI")
-    system_message = """
-    The assistant's job is to summarize the given audio transcription into 3-4 sentences. The first sentence should be the overview of the audio, and the rest should be the main points of the audio. The summary's language must be the same as the original audio use.
-
-    Here is the format for the summary:
-    \"\"\"
-    This audio is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
-    \"\"\"
-    """
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": f"Audio transcript:\n{transcript[:2000]}"}
-                # Limit content to 2000 characters
-            ],
-            max_tokens=2000,
-            temperature=0.5
-        )
-        print("Audio summary generated")
-        return response.choices[0].message.content
+        return summary
     except Exception as e:
         print(f"API error occurred: {e}")
         return None
@@ -354,9 +288,7 @@ def summarize_audio_openai(transcript, client):
 def summarize_audio(file_path, summarization_client, transcription_client, transcribe_function):
     transcript = transcribe_function(file_path, transcription_client)
     if transcript:
-        return summarize_audio_anthropic(transcript, summarization_client) if isinstance(summarization_client,
-                                                                                         anthropic.Anthropic) else summarize_audio_openai(
-            transcript, summarization_client)
+        return summarize_audio_transcript(transcript, summarization_client)
     return None
 
 
@@ -386,8 +318,8 @@ def encode_frame(frame):
     return base64.b64encode(buffer).decode('utf-8')
 
 
-def summarize_video_frames_anthropic(frames, client):
-    print("Summarizing video frames with Anthropic")
+def summarize_video_frames(frames, client):
+    print("Summarizing video frames")
     encoded_frames = [encode_frame(frame) for frame in frames]
 
     system_message = """
@@ -400,60 +332,42 @@ def summarize_video_frames_anthropic(frames, client):
     """
 
     try:
-        message = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=1500,
-            temperature=0.3,
-            system=system_message,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Here are the video frames."},
-                        *[{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": frame}} for
-                          frame in encoded_frames]
-                    ]
-                }
-            ]
-        )
+        if isinstance(client, anthropic.Anthropic):
+            message = client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=1500,
+                temperature=0.3,
+                system=system_message,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Here are the video frames."},
+                            *[{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": frame}} for frame in encoded_frames]
+                        ]
+                    }
+                ]
+            )
+            summary = message.content[0].text if message.content else None
+        else:  # OpenAI
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Here are the video frames."},
+                            *[{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame}"}} for frame in encoded_frames]
+                        ]
+                    }
+                ],
+                max_tokens=300,
+            )
+            summary = response.choices[0].message.content
+        
         print("Key frames summary generated")
-        return message.content[0].text if message.content else None
-    except anthropic.APIError as e:
-        print(f"API error occurred: {e}")
-        return None
-
-
-def summarize_video_frames_openai(frames, client):
-    print("Summarizing video frames with OpenAI")
-    encoded_frames = [encode_frame(frame) for frame in frames]
-
-    system_message = """
-    The assistant's job is to summarize the given video frames into 3-4 sentences. The first sentence should be an overview, and the rest should describe the main elements or features of the frame. And if the frame contains text, please include the text in the summary.
-
-    Here is the format for the summary:
-    \"\"\"
-    This video is about .... The main points are: {{first phrase}}, {{second phrase}}, {{third phrase}}, ...
-    \"\"\"
-    """
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_message},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Here are the video frames."},
-                        *[{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame}"}} for frame in
-                          encoded_frames]
-                    ]
-                }
-            ],
-            max_tokens=300,
-        )
-        print("Key frames summary generated")
-        return response.choices[0].message.content
+        return summary
     except Exception as e:
         print(f"API error occurred: {e}")
         return None
@@ -466,8 +380,7 @@ def summarize_video(file_path, summarization_client, transcription_client, trans
         print(f"Failed to extract key frames from {file_path}")
         return None
 
-    frames_summary = summarize_video_frames_anthropic(key_frames, summarization_client) if isinstance(
-        summarization_client, anthropic.Anthropic) else summarize_video_frames_openai(key_frames, summarization_client)
+    frames_summary = summarize_video_frames(key_frames, summarization_client)
 
     audio_summary = summarize_audio(file_path, summarization_client, transcription_client, transcribe_function)
 
@@ -558,16 +471,10 @@ def main():
         if model_choice == 'a':
             api_key = get_api_key('anthropic')
             summarization_client = anthropic.Anthropic(api_key=api_key)
-            summarize_document = lambda file_path: summarize_document_anthropic(file_path, summarization_client)
-            summarize_image = lambda file_path: summarize_image_anthropic(file_path, summarization_client)
-            summarize_video_frames = lambda frames: summarize_video_frames_anthropic(frames, summarization_client)
             break
         elif model_choice == 'o':
             api_key = get_api_key('openai')
             summarization_client = OpenAI(api_key=api_key)
-            summarize_document = lambda file_path: summarize_document_openai(file_path, summarization_client)
-            summarize_image = lambda file_path: summarize_image_openai(file_path, summarization_client)
-            summarize_video_frames = lambda frames: summarize_video_frames_openai(frames, summarization_client)
             break
         else:
             print("Invalid choice. Please enter 'a' or 'o'.")
@@ -594,10 +501,10 @@ def main():
         else:
             print("Invalid choice. Please enter 'o' or 'l'.")
 
-    summarize_audio_lambda = lambda file_path: summarize_audio(file_path, summarization_client, transcription_client,
-                                                               transcribe_function)
-    summarize_video_lambda = lambda file_path: summarize_video(file_path, summarization_client, transcription_client,
-                                                               transcribe_function)
+    summarize_document_lambda = lambda file_path: summarize_document(file_path, summarization_client)
+    summarize_image_lambda = lambda file_path: summarize_image(file_path, summarization_client)
+    summarize_audio_lambda = lambda file_path: summarize_audio(file_path, summarization_client, transcription_client, transcribe_function)
+    summarize_video_lambda = lambda file_path: summarize_video(file_path, summarization_client, transcription_client, transcribe_function)
 
     folder_path = input("Enter the folder path to index: ")
     folder_path = Path(folder_path).resolve()
@@ -607,8 +514,7 @@ def main():
         return
 
     print(f"Starting to index folder: {folder_path}")
-    folder_overview = index_folder(folder_path, summarize_document, summarize_image, summarize_audio_lambda,
-                                   summarize_video_lambda)
+    folder_overview = index_folder(folder_path, summarize_document_lambda, summarize_image_lambda, summarize_audio_lambda, summarize_video_lambda)
 
     if folder_overview:
         output_file = folder_path / 'folder_overview.json'
